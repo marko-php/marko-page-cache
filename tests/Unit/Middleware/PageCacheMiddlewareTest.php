@@ -235,6 +235,12 @@ function makeNullRouteMatcher(): RouteMatcherInterface
 {
     return new class () implements RouteMatcherInterface
     {
+        public function allowedMethods(
+            string $path,
+        ): array {
+            return [];
+        }
+
         public function match(
             string $method,
             string $path,
@@ -248,6 +254,12 @@ function makeMatcherForController(string $action): RouteMatcherInterface
 {
     return new readonly class ($action) implements RouteMatcherInterface
     {
+        public function allowedMethods(
+            string $path,
+        ): array {
+            return [];
+        }
+
         public function __construct(private string $action) {}
 
         public function match(

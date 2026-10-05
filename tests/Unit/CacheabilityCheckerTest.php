@@ -112,6 +112,12 @@ function makeNullMatcher(): RouteMatcherInterface
 {
     return new class () implements RouteMatcherInterface
     {
+        public function allowedMethods(
+            string $path,
+        ): array {
+            return [];
+        }
+
         public function match(
             string $method,
             string $path,
@@ -257,6 +263,12 @@ it('still refuses to cache a response carrying a literal set-cookie header', fun
 it('returns the Cacheable attribute when the matched route declares it', function (): void {
     $matcher = new class () implements RouteMatcherInterface
     {
+        public function allowedMethods(
+            string $path,
+        ): array {
+            return [];
+        }
+
         public function match(
             string $method,
             string $path,
@@ -285,6 +297,12 @@ it('returns the Cacheable attribute when the matched route declares it', functio
 it('returns null when the matched route has no Cacheable attribute', function (): void {
     $matcher = new class () implements RouteMatcherInterface
     {
+        public function allowedMethods(
+            string $path,
+        ): array {
+            return [];
+        }
+
         public function match(
             string $method,
             string $path,
@@ -316,6 +334,12 @@ it('returns null when no route matches the request', function (): void {
 it('returns null when the matched route\'s controller class does not exist (defensive)', function (): void {
     $matcher = new class () implements RouteMatcherInterface
     {
+        public function allowedMethods(
+            string $path,
+        ): array {
+            return [];
+        }
+
         public function match(
             string $method,
             string $path,
@@ -342,6 +366,12 @@ it(
     function (): void {
         $matcher = new class () implements RouteMatcherInterface
         {
+            public function allowedMethods(
+                string $path,
+            ): array {
+                return [];
+            }
+
             public function match(
                 string $method,
                 string $path,
