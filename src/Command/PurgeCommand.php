@@ -22,21 +22,31 @@ readonly class PurgeCommand implements CommandInterface
         Input $input,
         Output $output,
     ): int {
-        $target = $input->getArgument(0);
+        if ($input->hasOption('tag')) {
+            $tag = $input->getOption('tag');
 
-        if ($target === null) {
+            if ($tag === 'true' || $tag === '') {
+                $output->writeLine('Error: --tag requires a value. Usage: page-cache:purge --tag <tag>');
+
+                return 1;
+            }
+
+            $success = $this->pageCache->purgeTag($tag);
+            $output->writeLine($success ? "Tag '$tag' purged." : "Failed to purge tag '$tag'.");
+
+            return $success ? 0 : 1;
+        }
+
+        $url = $input->getArgument(0);
+
+        if ($url === null) {
             $output->writeLine('Error: No target specified. Provide a URL or use --tag <tag>.');
 
             return 1;
         }
 
-        if ($input->hasOption('tag')) {
-            $success = $this->pageCache->purgeTag($target);
-            $output->writeLine($success ? "Tag '$target' purged." : "Failed to purge tag '$target'.");
-        } else {
-            $success = $this->pageCache->purgeUrl($target);
-            $output->writeLine($success ? "URL '$target' purged." : "Failed to purge URL '$target'.");
-        }
+        $success = $this->pageCache->purgeUrl($url);
+        $output->writeLine($success ? "URL '$url' purged." : "Failed to purge URL '$url'.");
 
         return $success ? 0 : 1;
     }
