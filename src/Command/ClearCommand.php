@@ -11,7 +11,7 @@ use Marko\Core\Command\Output;
 use Marko\PageCache\Contracts\PageCacheInterface;
 
 /** @noinspection PhpUnused */
-#[Command(name: 'page-cache:clear', description: 'Clear the full-page cache')]
+#[Command(name: 'page-cache:clear', description: 'Clear the full-page cache', destructive: true)]
 readonly class ClearCommand implements CommandInterface
 {
     public function __construct(

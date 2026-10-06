@@ -11,7 +11,7 @@ use Marko\Core\Command\Output;
 use Marko\PageCache\Contracts\PageCacheInterface;
 
 /** @noinspection PhpUnused */
-#[Command(name: 'page-cache:purge', description: 'Purge a page cache entry by URL or tag')]
+#[Command(name: 'page-cache:purge', description: 'Purge a page cache entry by URL or tag', destructive: true)]
 readonly class PurgeCommand implements CommandInterface
 {
     public function __construct(
