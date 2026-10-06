@@ -46,7 +46,7 @@ readonly class PageCacheMiddleware implements MiddlewareInterface
             return $next($request);
         }
 
-        $hit = $this->pageCache->lookup($request);
+        $hit = $this->pageCache->lookup($request, $cacheable->query);
 
         if ($hit !== null) {
             return $hit;
@@ -76,7 +76,7 @@ readonly class PageCacheMiddleware implements MiddlewareInterface
         return $this->pageCache->store(
             $request,
             $response,
-            new CachePolicy(ttl: $cacheable->ttl, tags: $finalTags),
+            new CachePolicy(ttl: $cacheable->ttl, tags: $finalTags, queryParams: $cacheable->query),
         );
     }
 }

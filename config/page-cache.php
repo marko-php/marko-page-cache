@@ -9,6 +9,9 @@ return [
     'path' => Env::string('PAGE_CACHE_PATH', 'storage/page-cache'),
     // Seconds a cached page stays fresh; 0 means it never expires (purge by tag, by URL or with page-cache:clear).
     'default_ttl' => Env::int('PAGE_CACHE_TTL', 3600, min: 0),
+    // Maximum cached entries per URL path, counting every query variant, host, scheme and method. Further
+    // variants of a path at the limit are served uncached. 0 disables the limit.
+    'max_variants_per_path' => 1000,
     'cacheable_status_codes' => [200, 301],
     'cacheable_methods' => ['GET', 'HEAD'],
     // A request carrying any of these cookies (fnmatch patterns) is never served from or stored in the cache.

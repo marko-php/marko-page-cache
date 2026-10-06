@@ -16,3 +16,8 @@ it('accepts an empty tags array on a cache policy', function (): void {
 
     expect($policy->tags)->toBeEmpty();
 });
+
+it('defaults to no query parameters in the key and stores an allowlist when given', function (): void {
+    expect(new CachePolicy(ttl: 60, tags: [])->queryParams)->toBe([])
+        ->and(new CachePolicy(ttl: 60, tags: [], queryParams: ['page'])->queryParams)->toBe(['page']);
+});

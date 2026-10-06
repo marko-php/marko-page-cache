@@ -7,12 +7,14 @@ use Marko\PageCache\Contracts\PageCacheInterface;
 use Marko\Routing\Http\Request;
 use Marko\Routing\Http\Response;
 
-it('declares lookup with Request parameter and nullable Response return', function (): void {
+it('declares lookup with Request and query allowlist parameters and nullable Response return', function (): void {
     $method = new ReflectionMethod(PageCacheInterface::class, 'lookup');
     $params = $method->getParameters();
 
-    expect($params)->toHaveCount(1)
+    expect($params)->toHaveCount(2)
         ->and($params[0]->getType()->getName())->toBe(Request::class)
+        ->and($params[1]->getName())->toBe('queryParams')
+        ->and($params[1]->getType()->getName())->toBe('array')
         ->and($method->getReturnType()->getName())->toBe(Response::class)
         ->and($method->getReturnType()->allowsNull())->toBeTrue();
 });

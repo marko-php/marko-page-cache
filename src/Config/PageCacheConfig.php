@@ -47,6 +47,23 @@ readonly class PageCacheConfig
     }
 
     /**
+     * Maximum number of cached entries per URL path (all query variants, hosts, schemes and methods
+     * together). Once reached, further variants of that path are served uncached. 0 means no limit.
+     *
+     * @throws ConfigNotFoundException|PageCacheException
+     */
+    public function maxVariantsPerPath(): int
+    {
+        $max = $this->configRepository->getInt('page-cache.max_variants_per_path');
+
+        if ($max < 0) {
+            throw PageCacheException::negativeMaxVariantsPerPath($max);
+        }
+
+        return $max;
+    }
+
+    /**
      * @return array<int>
      *
      * @throws ConfigNotFoundException

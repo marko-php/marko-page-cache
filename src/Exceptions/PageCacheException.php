@@ -27,6 +27,26 @@ class PageCacheException extends MarkoException
         );
     }
 
+    public static function invalidQueryParam(mixed $param): self
+    {
+        $given = is_string($param) ? "''" : get_debug_type($param);
+
+        return new self(
+            message: "Invalid #[Cacheable] query parameter $given: each entry must be a non-empty parameter name.",
+            context: 'While constructing a #[Cacheable] attribute on a controller action.',
+            suggestion: "List the query parameter names that change the page, e.g. #[Cacheable(ttl: 300, query: ['page', 'sort'])].",
+        );
+    }
+
+    public static function negativeMaxVariantsPerPath(int $max): self
+    {
+        return new self(
+            message: "Invalid page-cache.max_variants_per_path $max: the limit cannot be negative.",
+            context: 'While reading page-cache.max_variants_per_path from config/page-cache.php.',
+            suggestion: 'Set page-cache.max_variants_per_path to a positive number of cached entries per path, or to 0 for no limit.',
+        );
+    }
+
     public static function negativeDefaultTtl(int $ttl): self
     {
         return new self(

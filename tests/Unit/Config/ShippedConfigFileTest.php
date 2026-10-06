@@ -57,3 +57,9 @@ it('rejects a negative PAGE_CACHE_TTL at config load', function (): void {
     expect(fn (): array => new ConfigLoader()->load(PAGE_CACHE_CONFIG_FILE))
         ->toThrow(ConfigException::class, 'Environment variable "PAGE_CACHE_TTL" must be at least 0');
 });
+
+it('ships a max_variants_per_path limit of 1000', function (): void {
+    $config = new ConfigLoader()->load(PAGE_CACHE_CONFIG_FILE);
+
+    expect($config['max_variants_per_path'])->toBe(1000);
+});

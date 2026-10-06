@@ -16,8 +16,17 @@ interface PageCacheInterface
      * Returns null when no entry is found, or unconditionally for reverse-proxy
      * drivers (Varnish, NGINX FastCGI cache, Cloudflare/Fastly) where the proxy
      * intercepts cache hits before PHP runs — PHP is only invoked on misses.
+     *
+     * Only the query parameters named in $queryParams (the route's
+     * #[Cacheable(query: [...])] allowlist) form part of the key; drivers build
+     * it with CacheKey::fromRequest($request, $queryParams).
+     *
+     * @param array<string> $queryParams
      */
-    public function lookup(Request $request): ?Response;
+    public function lookup(
+        Request $request,
+        array $queryParams,
+    ): ?Response;
 
     /**
      * Store a response in the cache for the given request under the given policy.
@@ -30,6 +39,10 @@ interface PageCacheInterface
      *
      * The middleware uses the returned Response (not the input) when sending
      * downstream, so header decoration added by proxy drivers is honored.
+     *
+     * The key is built from $policy->queryParams, as in lookup(). Drivers that
+     * store entries themselves SHOULD enforce page-cache.max_variants_per_path
+     * and skip the store (returning the response unchanged) at the limit.
      */
     public function store(
         Request $request,
@@ -39,6 +52,10 @@ interface PageCacheInterface
 
     /**
      * Purge the cached entry for the given URL.
+     *
+     * Pass the URL with only its allowlisted query parameters (those in the
+     * route's #[Cacheable(query: [...])]); other parameters never form part of
+     * a stored key.
      *
      * v1 limitation: only the canonical GET key for the URL is purged. HEAD
      * entries and any future Vary-axis variants of the same URL are NOT purged

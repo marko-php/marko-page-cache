@@ -15,8 +15,10 @@ $fakePageCache = function (bool $clearResult): PageCacheInterface {
     {
         public function __construct(private bool $clearResult) {}
 
-        public function lookup(Request $request): ?Response
-        {
+        public function lookup(
+            Request $request,
+            array $queryParams,
+        ): ?Response {
             return null;
         }
 

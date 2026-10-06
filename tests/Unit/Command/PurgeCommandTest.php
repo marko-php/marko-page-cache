@@ -18,8 +18,10 @@ $fakePageCache = function (bool $purgeUrlResult = true, bool $purgeTagResult = t
             private bool $purgeTagResult,
         ) {}
 
-        public function lookup(Request $request): ?Response
-        {
+        public function lookup(
+            Request $request,
+            array $queryParams,
+        ): ?Response {
             return null;
         }
 
@@ -73,8 +75,10 @@ it('purges tag homepage for page-cache:purge --tag homepage', function (): void 
         /** @var list<string> */
         public array $purgedUrls = [];
 
-        public function lookup(Request $request): ?Response
-        {
+        public function lookup(
+            Request $request,
+            array $queryParams,
+        ): ?Response {
             return null;
         }
 

@@ -45,3 +45,19 @@ it('accepts a ttl of zero', function (): void {
 it('rejects a negative ttl with a PageCacheException', function (): void {
     new Cacheable(ttl: -1);
 })->throws(PageCacheException::class, 'Invalid #[Cacheable] ttl -1');
+
+it('defaults to an empty query parameter allowlist', function (): void {
+    expect(new Cacheable(ttl: 60)->query)->toBe([]);
+});
+
+it('stores the query parameter allowlist', function (): void {
+    expect(new Cacheable(ttl: 60, query: ['page', 'sort'])->query)->toBe(['page', 'sort']);
+});
+
+it('rejects an empty query parameter name with a PageCacheException', function (): void {
+    new Cacheable(ttl: 60, query: ['page', '']);
+})->throws(PageCacheException::class, "Invalid #[Cacheable] query parameter ''");
+
+it('rejects a non-string query parameter name with a PageCacheException', function (): void {
+    new Cacheable(ttl: 60, query: [1]);
+})->throws(PageCacheException::class, 'Invalid #[Cacheable] query parameter int');

@@ -88,6 +88,22 @@ it('returns the configured trusted hosts lowercased', function (): void {
     expect($config->trustedHosts())->toBe(['example.com', '*.example.com']);
 });
 
+it('returns the configured max variants per path', function (): void {
+    $config = new PageCacheConfig(new FakeConfigRepository([
+        'page-cache.max_variants_per_path' => 250,
+    ]));
+
+    expect($config->maxVariantsPerPath())->toBe(250);
+});
+
+it('rejects a negative max variants per path with a PageCacheException', function (): void {
+    $config = new PageCacheConfig(new FakeConfigRepository([
+        'page-cache.max_variants_per_path' => -1,
+    ]));
+
+    $config->maxVariantsPerPath();
+})->throws(PageCacheException::class, 'Invalid page-cache.max_variants_per_path -1');
+
 it('returns the configured auth middleware patterns', function (): void {
     $config = new PageCacheConfig(new FakeConfigRepository([
         'page-cache.auth_middleware_patterns' => ['*Auth*'],

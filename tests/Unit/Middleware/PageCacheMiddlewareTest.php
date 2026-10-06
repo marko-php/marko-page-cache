@@ -30,9 +30,15 @@ class FakePageCache implements PageCacheInterface
 
     public int $lookupCount = 0;
 
-    public function lookup(Request $request): ?Response
-    {
+    /** @var array<string>|null */
+    public ?array $lookupQueryParams = null;
+
+    public function lookup(
+        Request $request,
+        array $queryParams,
+    ): ?Response {
         $this->lookupCount++;
+        $this->lookupQueryParams = $queryParams;
 
         return $this->lookupResult;
     }
@@ -71,6 +77,9 @@ class MiddlewareCacheableController
     public function index(): void {}
 
     public function show(): void {}
+
+    #[Cacheable(ttl: 600, query: ['page', 'sort'])]
+    public function indexWithQuery(): void {}
 
     #[Cacheable(ttl: 3600, tags: ['static-a', 'static-b'], provider: FakeCacheTagProvider::class)]
     public function indexWithProvider(): void {}
@@ -615,4 +624,26 @@ it('does not invoke the provider when the response is not cacheable', function (
     $middleware->handle($request, $next);
 
     expect($container->getCalled)->toBeFalse();
+});
+
+it('passes the route query allowlist to lookup and store', function (): void {
+    $checker = makeMiddlewareChecker(makeMatcherForController('indexWithQuery'));
+    $cache = new FakePageCache();
+    $middleware = new PageCacheMiddleware($cache, $checker, makeMiddlewareContainer());
+
+    $middleware->handle(makeMiddlewareRequest(uri: '/blog?page=2'), fn () => makeMiddlewareResponse());
+
+    expect($cache->lookupQueryParams)->toBe(['page', 'sort'])
+        ->and($cache->storedPolicy?->queryParams)->toBe(['page', 'sort']);
+});
+
+it('passes an empty query allowlist when the route lists no query parameters', function (): void {
+    $checker = makeMiddlewareChecker(makeMatcherForController('index'));
+    $cache = new FakePageCache();
+    $middleware = new PageCacheMiddleware($cache, $checker, makeMiddlewareContainer());
+
+    $middleware->handle(makeMiddlewareRequest(uri: '/products?x=1'), fn () => makeMiddlewareResponse());
+
+    expect($cache->lookupQueryParams)->toBe([])
+        ->and($cache->storedPolicy?->queryParams)->toBe([]);
 });

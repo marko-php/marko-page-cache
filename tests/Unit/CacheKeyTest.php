@@ -5,13 +5,13 @@ declare(strict_types=1);
 use Marko\PageCache\CacheKey;
 use Marko\Routing\Http\Request;
 
-it('builds a cache key from method, path, and query string', function (): void {
+it('builds a cache key from method, path, and allowlisted query parameters', function (): void {
     $request = new Request(
         server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/products?color=red'],
         query: ['color' => 'red'],
     );
 
-    $key = CacheKey::fromRequest($request);
+    $key = CacheKey::fromRequest($request, ['color']);
 
     expect($key->method)->toBe('GET')
         ->and($key->path)->toBe('/products')
@@ -26,7 +26,7 @@ it('includes the scheme and host in the cache key', function (): void {
         'HTTPS' => 'on',
     ]);
 
-    $key = CacheKey::fromRequest($request);
+    $key = CacheKey::fromRequest($request, []);
 
     expect($key->scheme)->toBe('https')
         ->and($key->host)->toBe('shop.example.com');
@@ -36,7 +36,7 @@ it('returns different hashes for the same path on different hosts', function ():
     $a = new Request(server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/p', 'HTTP_HOST' => 'a.example.com']);
     $b = new Request(server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/p', 'HTTP_HOST' => 'b.example.com']);
 
-    expect(CacheKey::fromRequest($a)->hash())->not->toBe(CacheKey::fromRequest($b)->hash());
+    expect(CacheKey::fromRequest($a, [])->hash())->not->toBe(CacheKey::fromRequest($b, [])->hash());
 });
 
 it('returns different hashes for the same path over http and https', function (): void {
@@ -48,7 +48,7 @@ it('returns different hashes for the same path over http and https', function ()
         'HTTPS' => 'on',
     ]);
 
-    expect(CacheKey::fromRequest($http)->hash())->not->toBe(CacheKey::fromRequest($https)->hash());
+    expect(CacheKey::fromRequest($http, [])->hash())->not->toBe(CacheKey::fromRequest($https, [])->hash());
 });
 
 it('derives the scheme from server variables and ignores forwarded headers', function (
@@ -77,7 +77,7 @@ it('drops only the default port for the scheme when normalizing the host', funct
 it('falls back to SERVER_NAME when the request has no Host header', function (): void {
     $request = new Request(server: ['REQUEST_METHOD' => 'GET', 'SERVER_NAME' => 'example.com']);
 
-    expect(CacheKey::fromRequest($request)->host)->toBe('example.com')
+    expect(CacheKey::fromRequest($request, [])->host)->toBe('example.com')
         ->and(CacheKey::hostnameFromRequest(new Request(server: ['HTTP_HOST' => 'Example.com:8080'])))
         ->toBe('example.com');
 });
@@ -88,7 +88,7 @@ it('normalizes query string to sorted key-value pairs', function (): void {
         query: ['b' => '2', 'a' => '1'],
     );
 
-    $key = CacheKey::fromRequest($request);
+    $key = CacheKey::fromRequest($request, ['a', 'b']);
 
     expect($key->query)->toBe('a=1&b=2');
 });
@@ -99,7 +99,7 @@ it('produces an empty query for requests without query parameters', function ():
         query: [],
     );
 
-    $key = CacheKey::fromRequest($request);
+    $key = CacheKey::fromRequest($request, []);
 
     expect($key->query)->toBe('');
 });
@@ -115,8 +115,8 @@ it('returns different hashes for different methods on the same path', function (
         query: [],
     );
 
-    $getKey = CacheKey::fromRequest($getRequest);
-    $postKey = CacheKey::fromRequest($postRequest);
+    $getKey = CacheKey::fromRequest($getRequest, []);
+    $postKey = CacheKey::fromRequest($postRequest, []);
 
     expect($getKey->hash())->not->toBe($postKey->hash());
 });
@@ -148,8 +148,8 @@ it('returns the same hash for two equivalent keys with different query orderings
         query: ['a' => '1', 'b' => '2'],
     );
 
-    $key1 = CacheKey::fromRequest($request1);
-    $key2 = CacheKey::fromRequest($request2);
+    $key1 = CacheKey::fromRequest($request1, ['a', 'b']);
+    $key2 = CacheKey::fromRequest($request2, ['a', 'b']);
 
     expect($key1->hash())->toBe($key2->hash());
 });
@@ -162,7 +162,7 @@ it(
             query: ['q' => 'hello world'],
         );
 
-        $storedKey = CacheKey::fromRequest($request);
+        $storedKey = CacheKey::fromRequest($request, ['q']);
         $purgeQuery = CacheKey::normalizeQuery('q=hello+world');
         $purgeKey = new CacheKey(method: 'GET', scheme: 'http', host: '', path: '/search', query: $purgeQuery);
 
@@ -178,7 +178,7 @@ it(
             query: ['q' => 'a+b'],
         );
 
-        $storedKey = CacheKey::fromRequest($request);
+        $storedKey = CacheKey::fromRequest($request, ['q']);
         $purgeQuery = CacheKey::normalizeQuery('q=a%2Bb');
         $purgeKey = new CacheKey(method: 'GET', scheme: 'http', host: '', path: '/search', query: $purgeQuery);
 
@@ -192,7 +192,7 @@ it('normalizes an empty query to an empty string in both store and purge paths',
         query: [],
     );
 
-    $storedKey = CacheKey::fromRequest($request);
+    $storedKey = CacheKey::fromRequest($request, []);
     $purgeQuery = CacheKey::normalizeQuery('');
 
     expect($storedKey->query)->toBe('')
@@ -205,7 +205,7 @@ it('produces matching hashes for a multi-parameter query across store and purge'
         query: ['z' => '3', 'a' => 'hello world', 'm' => 'foo bar'],
     );
 
-    $storedKey = CacheKey::fromRequest($request);
+    $storedKey = CacheKey::fromRequest($request, ['z', 'a', 'm']);
     $purgeQuery = CacheKey::normalizeQuery('z=3&a=hello+world&m=foo%20bar');
     $purgeKey = new CacheKey(method: 'GET', scheme: 'http', host: '', path: '/search', query: $purgeQuery);
 
@@ -226,7 +226,26 @@ it('sorts query parameters so key ordering does not affect the hash', function (
     $normalizedForward = CacheKey::normalizeQuery('z=3&a=1&m=2');
     $normalizedReverse = CacheKey::normalizeQuery('a=1&m=2&z=3');
 
-    expect(CacheKey::fromRequest($request1)->hash())->toBe(CacheKey::fromRequest($request2)->hash())
+    expect(CacheKey::fromRequest($request1, ['z', 'a', 'm'])->hash())->toBe(
+        CacheKey::fromRequest($request2, ['z', 'a', 'm'])->hash(),
+    )
         ->and($normalizedForward)->toBe($normalizedReverse)
         ->and($normalizedForward)->toBe('a=1&m=2&z=3');
+});
+
+it('ignores query parameters that are not in the allowlist', function (): void {
+    $request = new Request(
+        server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/blog?page=2&x=1&utm_source=mail'],
+        query: ['page' => '2', 'x' => '1', 'utm_source' => 'mail'],
+    );
+
+    expect(CacheKey::fromRequest($request, ['page'])->query)->toBe('page=2')
+        ->and(CacheKey::fromRequest($request, [])->query)->toBe('');
+});
+
+it('returns the same hash for requests that differ only in unlisted query parameters', function (): void {
+    $a = new Request(server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/blog'], query: ['x' => '1']);
+    $b = new Request(server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/blog'], query: ['x' => '1000000']);
+
+    expect(CacheKey::fromRequest($a, [])->hash())->toBe(CacheKey::fromRequest($b, [])->hash());
 });

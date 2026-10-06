@@ -16,8 +16,16 @@ readonly class CacheKey
         public string $query,
     ) {}
 
-    public static function fromRequest(Request $request): self
-    {
+    /**
+     * Build the key for a request. Only the query parameters named in $queryParams form part of the
+     * key; every other parameter is ignored, so arbitrary query strings cannot mint new entries.
+     *
+     * @param array<string> $queryParams Allowlisted query parameter names (#[Cacheable(query: [...])])
+     */
+    public static function fromRequest(
+        Request $request,
+        array $queryParams,
+    ): self {
         $scheme = self::schemeFromRequest($request);
 
         return new self(
@@ -25,7 +33,7 @@ readonly class CacheKey
             scheme: $scheme,
             host: self::normalizeHost(self::rawHostFromRequest($request), $scheme),
             path: $request->path(),
-            query: self::buildQuery($request->query()),
+            query: self::buildQuery(array_intersect_key($request->query(), array_flip($queryParams))),
         );
     }
 
