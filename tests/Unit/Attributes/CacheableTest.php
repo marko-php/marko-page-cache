@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Marko\PageCache\Attributes\Cacheable;
+use Marko\PageCache\Exceptions\PageCacheException;
 
 class CacheableFixture
 {
@@ -34,3 +35,13 @@ it('can be discovered via reflection on a method that declares it', function ():
     expect($instance->ttl)->toBe(3600)
         ->and($instance->tags)->toBe(['products']);
 });
+
+it('accepts a ttl of zero', function (): void {
+    $cacheable = new Cacheable(ttl: 0);
+
+    expect($cacheable->ttl)->toBe(0);
+});
+
+it('rejects a negative ttl with a PageCacheException', function (): void {
+    new Cacheable(ttl: -1);
+})->throws(PageCacheException::class, 'Invalid #[Cacheable] ttl -1');

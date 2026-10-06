@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Marko\Config\Exceptions\ConfigNotFoundException;
 use Marko\PageCache\Config\PageCacheConfig;
+use Marko\PageCache\Exceptions\PageCacheException;
 use Marko\Testing\Fake\FakeConfigRepository;
 
 it('returns the configured driver name', function (): void {
@@ -29,6 +30,22 @@ it('returns the configured default ttl as int', function (): void {
 
     expect($config->defaultTtl())->toBe(7200);
 });
+
+it('returns a default ttl of zero', function (): void {
+    $config = new PageCacheConfig(new FakeConfigRepository([
+        'page-cache.default_ttl' => 0,
+    ]));
+
+    expect($config->defaultTtl())->toBe(0);
+});
+
+it('throws a PageCacheException when the default ttl is negative', function (): void {
+    $config = new PageCacheConfig(new FakeConfigRepository([
+        'page-cache.default_ttl' => -60,
+    ]));
+
+    $config->defaultTtl();
+})->throws(PageCacheException::class, 'Invalid page-cache.default_ttl -60');
 
 it('returns the configured cacheable status codes as array of ints', function (): void {
     $config = new PageCacheConfig(new FakeConfigRepository([

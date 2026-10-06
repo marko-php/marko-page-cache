@@ -7,6 +7,7 @@ namespace Marko\PageCache;
 use Marko\Config\Exceptions\ConfigNotFoundException;
 use Marko\PageCache\Attributes\Cacheable;
 use Marko\PageCache\Config\PageCacheConfig;
+use Marko\PageCache\Exceptions\PageCacheException;
 use Marko\Routing\Http\Request;
 use Marko\Routing\Http\Response;
 use Marko\Routing\RouteMatcherInterface;
@@ -58,6 +59,9 @@ readonly class CacheabilityChecker
         return true;
     }
 
+    /**
+     * @throws PageCacheException
+     */
     public function getRouteAttribute(Request $request): ?Cacheable
     {
         $matched = $this->routeMatcher->match($request->method(), $request->path());

@@ -6,6 +6,7 @@ namespace Marko\PageCache\Config;
 
 use Marko\Config\ConfigRepositoryInterface;
 use Marko\Config\Exceptions\ConfigNotFoundException;
+use Marko\PageCache\Exceptions\PageCacheException;
 
 readonly class PageCacheConfig
 {
@@ -30,11 +31,19 @@ readonly class PageCacheConfig
     }
 
     /**
-     * @throws ConfigNotFoundException
+     * Default page ttl in seconds. 0 means cached pages never expire and are only removed by a purge or clear.
+     *
+     * @throws ConfigNotFoundException|PageCacheException
      */
     public function defaultTtl(): int
     {
-        return $this->configRepository->getInt('page-cache.default_ttl');
+        $ttl = $this->configRepository->getInt('page-cache.default_ttl');
+
+        if ($ttl < 0) {
+            throw PageCacheException::negativeDefaultTtl($ttl);
+        }
+
+        return $ttl;
     }
 
     /**

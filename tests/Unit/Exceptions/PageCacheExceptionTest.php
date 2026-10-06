@@ -26,3 +26,19 @@ it('exposes context and suggestion via getter methods', function (): void {
     expect($exception->getContext())->toBe('specific context')
         ->and($exception->getSuggestion())->toBe('specific suggestion');
 });
+
+it('creates negativeTtl exception with message, context and suggestion', function (): void {
+    $exception = PageCacheException::negativeTtl(-5);
+
+    expect($exception->getMessage())->toContain('-5')
+        ->and($exception->getContext())->toContain('#[Cacheable]')
+        ->and($exception->getSuggestion())->toContain('default_ttl');
+});
+
+it('creates negativeDefaultTtl exception with message, context and suggestion', function (): void {
+    $exception = PageCacheException::negativeDefaultTtl(-10);
+
+    expect($exception->getMessage())->toContain('-10')
+        ->and($exception->getContext())->toContain('page-cache.default_ttl')
+        ->and($exception->getSuggestion())->toContain('PAGE_CACHE_TTL');
+});
