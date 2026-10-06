@@ -44,4 +44,26 @@ class PageCacheException extends MarkoException
             suggestion: 'Implement ' . CacheTagProviderInterface::class . " in '$providerClass'.",
         );
     }
+
+    public static function cacheableRouteWithAuthMiddleware(
+        string $controller,
+        string $action,
+        string $path,
+        string $middleware,
+    ): self {
+        return new self(
+            message: "Route '$path' ($controller::$action) is #[Cacheable] but uses authentication middleware '$middleware'. Cached pages are served by global middleware before route middleware runs, so this page would be served to unauthenticated visitors.",
+            context: 'Detected during marko/page-cache boot validation',
+            suggestion: 'Remove #[Cacheable] from authenticated routes. If the middleware does not authenticate, remove the pattern it matches from page-cache.auth_middleware_patterns.',
+        );
+    }
+
+    public static function purgeUrlWithoutHost(string $url): self
+    {
+        return new self(
+            message: "Cannot purge '$url': page cache entries are keyed by host, and the URL has no host.",
+            context: 'While purging a page cache entry by URL.',
+            suggestion: 'Pass an absolute URL (https://example.com/path), or list the site host names in page-cache.trusted_hosts so relative URLs are purged for each of them.',
+        );
+    }
 }

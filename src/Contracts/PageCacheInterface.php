@@ -44,6 +44,11 @@ interface PageCacheInterface
      * entries and any future Vary-axis variants of the same URL are NOT purged
      * in v1.
      *
+     * Entries are keyed by scheme and host, so drivers purge the URL's host over
+     * both http and https. A relative URL (no host) is purged for each exact
+     * host in page-cache.trusted_hosts, and throws PageCacheException when that
+     * list has none.
+     *
      * Returns true on success, false on failure.
      */
     public function purgeUrl(string $url): bool;

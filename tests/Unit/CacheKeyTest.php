@@ -18,6 +18,70 @@ it('builds a cache key from method, path, and query string', function (): void {
         ->and($key->query)->toBe('color=red');
 });
 
+it('includes the scheme and host in the cache key', function (): void {
+    $request = new Request(server: [
+        'REQUEST_METHOD' => 'GET',
+        'REQUEST_URI' => '/products',
+        'HTTP_HOST' => 'Shop.Example.com',
+        'HTTPS' => 'on',
+    ]);
+
+    $key = CacheKey::fromRequest($request);
+
+    expect($key->scheme)->toBe('https')
+        ->and($key->host)->toBe('shop.example.com');
+});
+
+it('returns different hashes for the same path on different hosts', function (): void {
+    $a = new Request(server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/p', 'HTTP_HOST' => 'a.example.com']);
+    $b = new Request(server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/p', 'HTTP_HOST' => 'b.example.com']);
+
+    expect(CacheKey::fromRequest($a)->hash())->not->toBe(CacheKey::fromRequest($b)->hash());
+});
+
+it('returns different hashes for the same path over http and https', function (): void {
+    $http = new Request(server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/p', 'HTTP_HOST' => 'example.com']);
+    $https = new Request(server: [
+        'REQUEST_METHOD' => 'GET',
+        'REQUEST_URI' => '/p',
+        'HTTP_HOST' => 'example.com',
+        'HTTPS' => 'on',
+    ]);
+
+    expect(CacheKey::fromRequest($http)->hash())->not->toBe(CacheKey::fromRequest($https)->hash());
+});
+
+it('derives the scheme from server variables and ignores forwarded headers', function (
+    array $server,
+    string $scheme,
+): void {
+    $request = new Request(server: ['REQUEST_METHOD' => 'GET', ...$server]);
+
+    expect(CacheKey::schemeFromRequest($request))->toBe($scheme);
+})->with([
+    'no https' => [[], 'http'],
+    'https on' => [['HTTPS' => 'on'], 'https'],
+    'https 1' => [['HTTPS' => '1'], 'https'],
+    'https off' => [['HTTPS' => 'off'], 'http'],
+    'request scheme' => [['REQUEST_SCHEME' => 'https'], 'https'],
+    'forwarded proto' => [['HTTP_X_FORWARDED_PROTO' => 'https'], 'http'],
+]);
+
+it('drops only the default port for the scheme when normalizing the host', function (): void {
+    expect(CacheKey::normalizeHost('Example.com:80', 'http'))->toBe('example.com')
+        ->and(CacheKey::normalizeHost('example.com:443', 'https'))->toBe('example.com')
+        ->and(CacheKey::normalizeHost('example.com:8080', 'http'))->toBe('example.com:8080')
+        ->and(CacheKey::normalizeHost('example.com:443', 'http'))->toBe('example.com:443');
+});
+
+it('falls back to SERVER_NAME when the request has no Host header', function (): void {
+    $request = new Request(server: ['REQUEST_METHOD' => 'GET', 'SERVER_NAME' => 'example.com']);
+
+    expect(CacheKey::fromRequest($request)->host)->toBe('example.com')
+        ->and(CacheKey::hostnameFromRequest(new Request(server: ['HTTP_HOST' => 'Example.com:8080'])))
+        ->toBe('example.com');
+});
+
 it('normalizes query string to sorted key-value pairs', function (): void {
     $request = new Request(
         server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/products?b=2&a=1'],
@@ -100,7 +164,7 @@ it(
 
         $storedKey = CacheKey::fromRequest($request);
         $purgeQuery = CacheKey::normalizeQuery('q=hello+world');
-        $purgeKey = new CacheKey(method: 'GET', path: '/search', query: $purgeQuery);
+        $purgeKey = new CacheKey(method: 'GET', scheme: 'http', host: '', path: '/search', query: $purgeQuery);
 
         expect($storedKey->hash())->toBe($purgeKey->hash());
     },
@@ -116,7 +180,7 @@ it(
 
         $storedKey = CacheKey::fromRequest($request);
         $purgeQuery = CacheKey::normalizeQuery('q=a%2Bb');
-        $purgeKey = new CacheKey(method: 'GET', path: '/search', query: $purgeQuery);
+        $purgeKey = new CacheKey(method: 'GET', scheme: 'http', host: '', path: '/search', query: $purgeQuery);
 
         expect($storedKey->hash())->toBe($purgeKey->hash());
     },
@@ -143,7 +207,7 @@ it('produces matching hashes for a multi-parameter query across store and purge'
 
     $storedKey = CacheKey::fromRequest($request);
     $purgeQuery = CacheKey::normalizeQuery('z=3&a=hello+world&m=foo%20bar');
-    $purgeKey = new CacheKey(method: 'GET', path: '/search', query: $purgeQuery);
+    $purgeKey = new CacheKey(method: 'GET', scheme: 'http', host: '', path: '/search', query: $purgeQuery);
 
     expect($storedKey->hash())->toBe($purgeKey->hash());
 });

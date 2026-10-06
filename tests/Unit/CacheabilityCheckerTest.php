@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-use Marko\Config\ConfigRepositoryInterface;
-use Marko\Config\Exceptions\ConfigNotFoundException;
 use Marko\PageCache\Attributes\Cacheable;
 use Marko\PageCache\CacheabilityChecker;
 use Marko\PageCache\Config\PageCacheConfig;
@@ -13,6 +11,7 @@ use Marko\Routing\Http\Response;
 use Marko\Routing\MatchedRoute;
 use Marko\Routing\RouteDefinition;
 use Marko\Routing\RouteMatcherInterface;
+use Marko\Testing\Fake\FakeConfigRepository;
 
 // Fixture controllers for attribute testing
 class CacheableActionController
@@ -27,85 +26,22 @@ function makeChecker(
     RouteMatcherInterface $matcher,
     array $methods = ['GET', 'HEAD'],
     array $statusCodes = [200],
+    array $bypassCookies = ['marko_session', 'remember_*'],
+    array $trustedHosts = [],
+    ?string $sessionCookieName = null,
 ): CacheabilityChecker {
-    $config = new readonly class ($methods, $statusCodes) implements ConfigRepositoryInterface
-    {
-        public function __construct(
-            private array $methods,
-            private array $statusCodes,
-        ) {}
+    $values = [
+        'page-cache.cacheable_methods' => $methods,
+        'page-cache.cacheable_status_codes' => $statusCodes,
+        'page-cache.bypass_cookies' => $bypassCookies,
+        'page-cache.trusted_hosts' => $trustedHosts,
+    ];
 
-        public function get(
-            string $key,
-            ?string $scope = null,
-        ): mixed {
-            return match ($key) {
-                'page-cache.cacheable_methods' => $this->methods,
-                'page-cache.cacheable_status_codes' => $this->statusCodes,
-                default => throw new ConfigNotFoundException($key),
-            };
-        }
+    if ($sessionCookieName !== null) {
+        $values['session.cookie.name'] = $sessionCookieName;
+    }
 
-        public function has(
-            string $key,
-            ?string $scope = null,
-        ): bool {
-            return false;
-        }
-
-        public function getString(
-            string $key,
-            ?string $scope = null,
-        ): string {
-            throw new ConfigNotFoundException($key);
-        }
-
-        public function getInt(
-            string $key,
-            ?string $scope = null,
-        ): int {
-            throw new ConfigNotFoundException($key);
-        }
-
-        public function getBool(
-            string $key,
-            ?string $scope = null,
-        ): bool {
-            throw new ConfigNotFoundException($key);
-        }
-
-        public function getFloat(
-            string $key,
-            ?string $scope = null,
-        ): float {
-            throw new ConfigNotFoundException($key);
-        }
-
-        public function getArray(
-            string $key,
-            ?string $scope = null,
-        ): array {
-            return match ($key) {
-                'page-cache.cacheable_methods' => $this->methods,
-                'page-cache.cacheable_status_codes' => $this->statusCodes,
-                default => throw new ConfigNotFoundException($key),
-            };
-        }
-
-        public function all(?string $scope = null): array
-        {
-            return [];
-        }
-
-        public function withScope(string $scope): ConfigRepositoryInterface
-        {
-            return $this;
-        }
-    };
-
-    $pageConfig = new PageCacheConfig($config);
-
-    return new CacheabilityChecker($matcher, $pageConfig);
+    return new CacheabilityChecker($matcher, new PageCacheConfig(new FakeConfigRepository($values)));
 }
 
 function makeNullMatcher(): RouteMatcherInterface
@@ -138,6 +74,69 @@ function makeCacheCheckerResponse(int $statusCode = 200, array $headers = []): R
 }
 
 // ─── isRequestCacheable ───────────────────────────────────────────────────────
+
+it('rejects requests carrying the default session cookie', function (): void {
+    $checker = makeChecker(makeNullMatcher());
+    $request = new Request(server: ['REQUEST_METHOD' => 'GET'], cookies: ['marko_session' => 'abc']);
+
+    expect($checker->isRequestCacheable($request))->toBeFalse();
+});
+
+it('rejects requests carrying the session cookie name configured in session.cookie.name', function (): void {
+    $checker = makeChecker(makeNullMatcher(), bypassCookies: [], sessionCookieName: 'shop_sid');
+    $request = new Request(server: ['REQUEST_METHOD' => 'GET'], cookies: ['shop_sid' => 'abc']);
+
+    expect($checker->isRequestCacheable($request))->toBeFalse();
+});
+
+it('rejects requests carrying a cookie matching a configured bypass cookie pattern', function (
+    string $cookie,
+): void {
+    $checker = makeChecker(makeNullMatcher(), bypassCookies: ['remember_*', 'auth_token']);
+    $request = new Request(server: ['REQUEST_METHOD' => 'GET'], cookies: [$cookie => 'value']);
+
+    expect($checker->isRequestCacheable($request))->toBeFalse();
+})->with(['remember_web', 'remember_admin', 'auth_token']);
+
+it('accepts requests carrying only cookies that match no bypass pattern', function (): void {
+    $checker = makeChecker(makeNullMatcher(), sessionCookieName: 'marko_session');
+    $request = new Request(server: ['REQUEST_METHOD' => 'GET'], cookies: ['_ga' => 'x', 'theme' => 'dark']);
+
+    expect($checker->isRequestCacheable($request))->toBeTrue();
+});
+
+it('rejects requests carrying any Authorization credentials', function (array $server): void {
+    $checker = makeChecker(makeNullMatcher());
+    $request = new Request(server: ['REQUEST_METHOD' => 'GET', ...$server]);
+
+    expect($checker->isRequestCacheable($request))->toBeFalse();
+})->with([
+    'bearer header' => [['HTTP_AUTHORIZATION' => 'Bearer abc']],
+    'basic header' => [['HTTP_AUTHORIZATION' => 'Basic YTpi']],
+    'redirected header' => [['REDIRECT_HTTP_AUTHORIZATION' => 'Bearer abc']],
+    'php basic auth' => [['PHP_AUTH_USER' => 'alice']],
+]);
+
+it('accepts any host when no trusted hosts are configured', function (): void {
+    $checker = makeChecker(makeNullMatcher());
+    $request = new Request(server: ['REQUEST_METHOD' => 'GET', 'HTTP_HOST' => 'anything.test']);
+
+    expect($checker->isRequestCacheable($request))->toBeTrue();
+});
+
+it('rejects requests for a host outside the configured trusted hosts', function (): void {
+    $checker = makeChecker(makeNullMatcher(), trustedHosts: ['example.com', '*.example.com']);
+
+    $trusted = new Request(server: ['REQUEST_METHOD' => 'GET', 'HTTP_HOST' => 'Example.com:8080']);
+    $subdomain = new Request(server: ['REQUEST_METHOD' => 'GET', 'HTTP_HOST' => 'shop.example.com']);
+    $untrusted = new Request(server: ['REQUEST_METHOD' => 'GET', 'HTTP_HOST' => 'evil.test']);
+    $missing = new Request(server: ['REQUEST_METHOD' => 'GET']);
+
+    expect($checker->isRequestCacheable($trusted))->toBeTrue()
+        ->and($checker->isRequestCacheable($subdomain))->toBeTrue()
+        ->and($checker->isRequestCacheable($untrusted))->toBeFalse()
+        ->and($checker->isRequestCacheable($missing))->toBeFalse();
+});
 
 it('accepts GET requests as cacheable', function (): void {
     $checker = makeChecker(makeNullMatcher());

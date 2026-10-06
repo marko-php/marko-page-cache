@@ -22,11 +22,25 @@ readonly class CacheabilityChecker
     ) {}
 
     /**
+     * Whether the request may be served from, or stored in, the page cache.
+     *
+     * Requests carrying credentials (an Authorization header, the session cookie or any configured
+     * bypass cookie) are never cacheable: the page cache runs before route middleware, so a cached
+     * page would otherwise be served without auth and one user's page could be stored for everyone.
+     *
      * @throws ConfigNotFoundException
      */
     public function isRequestCacheable(Request $request): bool
     {
-        return in_array($request->method(), $this->config->cacheableMethods(), true);
+        if (!in_array($request->method(), $this->config->cacheableMethods(), true)) {
+            return false;
+        }
+
+        if ($this->hasCredentials($request) || $this->hasBypassCookie($request)) {
+            return false;
+        }
+
+        return $this->isTrustedHost($request);
     }
 
     /**
@@ -82,6 +96,55 @@ readonly class CacheabilityChecker
         } catch (ReflectionException) {
             return null;
         }
+    }
+
+    private function hasCredentials(Request $request): bool
+    {
+        return $request->header('Authorization') !== null
+            || $request->server('REDIRECT_HTTP_AUTHORIZATION') !== null
+            || $request->server('PHP_AUTH_USER') !== null
+            || $request->server('PHP_AUTH_DIGEST') !== null;
+    }
+
+    /**
+     * @throws ConfigNotFoundException
+     */
+    private function hasBypassCookie(Request $request): bool
+    {
+        $cookieNames = array_map(strval(...), array_keys($request->cookie()));
+
+        if ($cookieNames === []) {
+            return false;
+        }
+
+        $patterns = $this->config->bypassCookies();
+
+        return array_any(
+            $cookieNames,
+            fn (string $name): bool => array_any(
+                $patterns,
+                fn (string $pattern): bool => fnmatch($pattern, $name),
+            ),
+        );
+    }
+
+    /**
+     * @throws ConfigNotFoundException
+     */
+    private function isTrustedHost(Request $request): bool
+    {
+        $trustedHosts = $this->config->trustedHosts();
+
+        if ($trustedHosts === []) {
+            return true;
+        }
+
+        $host = CacheKey::hostnameFromRequest($request);
+
+        return $host !== '' && array_any(
+            $trustedHosts,
+            fn (string $pattern): bool => fnmatch($pattern, $host),
+        );
     }
 
     /**

@@ -26,6 +26,14 @@ it('keeps the shipped default ttl of 3600 when PAGE_CACHE_TTL is unset', functio
     expect($config['default_ttl'])->toBe(3600);
 });
 
+it('ships secure defaults for credentialed requests', function (): void {
+    $config = new ConfigLoader()->load(PAGE_CACHE_CONFIG_FILE);
+
+    expect($config['bypass_cookies'])->toBe(['marko_session', 'remember_*'])
+        ->and($config['trusted_hosts'])->toBe([])
+        ->and($config['auth_middleware_patterns'])->toBe(['*Auth*']);
+});
+
 it('reads PAGE_CACHE_TTL=0 as a ttl of 0 (never expires)', function (): void {
     $_ENV['PAGE_CACHE_TTL'] = '0';
 

@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-use Marko\Config\ConfigRepositoryInterface;
-use Marko\Config\Exceptions\ConfigNotFoundException;
 use Marko\Core\Container\ContainerInterface;
 use Marko\PageCache\Attributes\Cacheable;
 use Marko\PageCache\CacheabilityChecker;
@@ -18,6 +16,7 @@ use Marko\Routing\Http\Response;
 use Marko\Routing\MatchedRoute;
 use Marko\Routing\RouteDefinition;
 use Marko\Routing\RouteMatcherInterface;
+use Marko\Testing\Fake\FakeConfigRepository;
 
 // ─── Fake PageCacheInterface ──────────────────────────────────────────────────
 
@@ -29,8 +28,12 @@ class FakePageCache implements PageCacheInterface
 
     public ?CachePolicy $storedPolicy = null;
 
+    public int $lookupCount = 0;
+
     public function lookup(Request $request): ?Response
     {
+        $this->lookupCount++;
+
         return $this->lookupResult;
     }
 
@@ -150,85 +153,22 @@ function makeMiddlewareChecker(
     RouteMatcherInterface $matcher,
     array $methods = ['GET', 'HEAD'],
     array $statusCodes = [200],
+    array $bypassCookies = ['marko_session', 'remember_*'],
+    array $trustedHosts = [],
+    ?string $sessionCookieName = null,
 ): CacheabilityChecker {
-    $config = new readonly class ($methods, $statusCodes) implements ConfigRepositoryInterface
-    {
-        public function __construct(
-            private array $methods,
-            private array $statusCodes,
-        ) {}
+    $values = [
+        'page-cache.cacheable_methods' => $methods,
+        'page-cache.cacheable_status_codes' => $statusCodes,
+        'page-cache.bypass_cookies' => $bypassCookies,
+        'page-cache.trusted_hosts' => $trustedHosts,
+    ];
 
-        public function get(
-            string $key,
-            ?string $scope = null,
-        ): mixed {
-            return match ($key) {
-                'page-cache.cacheable_methods' => $this->methods,
-                'page-cache.cacheable_status_codes' => $this->statusCodes,
-                default => throw new ConfigNotFoundException($key),
-            };
-        }
+    if ($sessionCookieName !== null) {
+        $values['session.cookie.name'] = $sessionCookieName;
+    }
 
-        public function has(
-            string $key,
-            ?string $scope = null,
-        ): bool {
-            return false;
-        }
-
-        public function getString(
-            string $key,
-            ?string $scope = null,
-        ): string {
-            throw new ConfigNotFoundException($key);
-        }
-
-        public function getInt(
-            string $key,
-            ?string $scope = null,
-        ): int {
-            throw new ConfigNotFoundException($key);
-        }
-
-        public function getBool(
-            string $key,
-            ?string $scope = null,
-        ): bool {
-            throw new ConfigNotFoundException($key);
-        }
-
-        public function getFloat(
-            string $key,
-            ?string $scope = null,
-        ): float {
-            throw new ConfigNotFoundException($key);
-        }
-
-        public function getArray(
-            string $key,
-            ?string $scope = null,
-        ): array {
-            return match ($key) {
-                'page-cache.cacheable_methods' => $this->methods,
-                'page-cache.cacheable_status_codes' => $this->statusCodes,
-                default => throw new ConfigNotFoundException($key),
-            };
-        }
-
-        public function all(?string $scope = null): array
-        {
-            return [];
-        }
-
-        public function withScope(string $scope): ConfigRepositoryInterface
-        {
-            return $this;
-        }
-    };
-
-    $pageConfig = new PageCacheConfig($config);
-
-    return new CacheabilityChecker($matcher, $pageConfig);
+    return new CacheabilityChecker($matcher, new PageCacheConfig(new FakeConfigRepository($values)));
 }
 
 function makeNullRouteMatcher(): RouteMatcherInterface
@@ -294,6 +234,93 @@ function makeMiddlewareContainer(): FakeContainer
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
+
+it('neither looks up nor stores a page for a request carrying the session cookie', function (): void {
+    $checker = makeMiddlewareChecker(makeMatcherForController('index'));
+    $cache = new FakePageCache();
+    $cache->lookupResult = makeMiddlewareResponse(body: "Alice's cached orders");
+    $middleware = new PageCacheMiddleware($cache, $checker, makeMiddlewareContainer());
+
+    $request = new Request(
+        server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/account/orders'],
+        cookies: ['marko_session' => 'alice-session-id'],
+    );
+    $fresh = makeMiddlewareResponse(body: "Alice's orders");
+
+    $result = $middleware->handle($request, fn (Request $r): Response => $fresh);
+
+    expect($result)->toBe($fresh)
+        ->and($cache->lookupCount)->toBe(0)
+        ->and($cache->storedPolicy)->toBeNull();
+});
+
+it('neither looks up nor stores a page for a request carrying an Authorization header', function (): void {
+    $checker = makeMiddlewareChecker(makeMatcherForController('index'));
+    $cache = new FakePageCache();
+    $middleware = new PageCacheMiddleware($cache, $checker, makeMiddlewareContainer());
+
+    $request = new Request(server: [
+        'REQUEST_METHOD' => 'GET',
+        'REQUEST_URI' => '/account/orders',
+        'HTTP_AUTHORIZATION' => 'Bearer secret-token',
+    ]);
+    $fresh = makeMiddlewareResponse();
+
+    $result = $middleware->handle($request, fn (Request $r): Response => $fresh);
+
+    expect($result)->toBe($fresh)
+        ->and($cache->lookupCount)->toBe(0)
+        ->and($cache->storedPolicy)->toBeNull();
+});
+
+it('neither looks up nor stores a page for a request carrying a configured auth cookie', function (): void {
+    $checker = makeMiddlewareChecker(makeMatcherForController('index'));
+    $cache = new FakePageCache();
+    $middleware = new PageCacheMiddleware($cache, $checker, makeMiddlewareContainer());
+
+    $request = new Request(
+        server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/account/orders'],
+        cookies: ['remember_web' => '1|token'],
+    );
+    $fresh = makeMiddlewareResponse();
+
+    $result = $middleware->handle($request, fn (Request $r): Response => $fresh);
+
+    expect($result)->toBe($fresh)
+        ->and($cache->lookupCount)->toBe(0)
+        ->and($cache->storedPolicy)->toBeNull();
+});
+
+it('does not store a response that started a session during the request', function (): void {
+    $checker = makeMiddlewareChecker(makeMatcherForController('index'));
+    $cache = new FakePageCache();
+    $middleware = new PageCacheMiddleware($cache, $checker, makeMiddlewareContainer());
+
+    $request = makeMiddlewareRequest('GET', '/products');
+    $fresh = makeMiddlewareResponse(headers: ['Set-Cookie' => 'marko_session=new-id; Path=/; HttpOnly']);
+
+    $result = $middleware->handle($request, fn (Request $r): Response => $fresh);
+
+    expect($result)->toBe($fresh)
+        ->and($cache->lookupCount)->toBe(1)
+        ->and($cache->storedPolicy)->toBeNull();
+});
+
+it('still serves and stores pages for anonymous requests with unrelated cookies', function (): void {
+    $checker = makeMiddlewareChecker(makeMatcherForController('index'));
+    $cache = new FakePageCache();
+    $middleware = new PageCacheMiddleware($cache, $checker, makeMiddlewareContainer());
+
+    $request = new Request(
+        server: ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => '/products'],
+        cookies: ['_ga' => 'GA1.2.3'],
+    );
+
+    $middleware->handle($request, fn (Request $r): Response => makeMiddlewareResponse());
+
+    expect($cache->lookupCount)->toBe(1)
+        ->and($cache->storedPolicy)->toBeInstanceOf(CachePolicy::class);
+});
 
 it('passes through when the request is not cacheable by HTTP method', function (): void {
     $checker = makeMiddlewareChecker(makeNullRouteMatcher(), methods: ['GET', 'HEAD']);
